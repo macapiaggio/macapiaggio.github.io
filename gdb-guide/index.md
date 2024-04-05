@@ -3,10 +3,11 @@
   - [Antes de llamar a GDB](#antes-de-llamar-a-gdb)
   - [Llamando a GDB](#llamando-a-gdb)
   - [Configurando breakpoints](#configurando-breakpoints)
-  - [Debuggeando nuestro código](#debuggeando-nuestro-código)
+  - [Iniciando la ejecución del código](#iniciando-la-ejecución-del-código)
     - [Imprimiendo valores de registros/memoria](#imprimiendo-valores-de-registrosmemoria)
       - [Ejemplo de salida de `print $xmm`](#ejemplo-de-salida-de-print-xmm)
     - [Revisando el estado del programa](#revisando-el-estado-del-programa)
+  - [Casteos y prints con formato](#casteos-y-prints-con-formato)
     - [Terminando o reiniciando la ejecución](#terminando-o-reiniciando-la-ejecución)
   - [Manejo de breakpoints](#manejo-de-breakpoints)
 
@@ -30,7 +31,10 @@ Supongamos que tengo los archivos asm.asm, c.c y el programa compilado (binario)
     * `gdb` solo, y luego `file ejec`
     * `gdb --args ejec temperature -i c facil.bmp` para llamar un binario con argumentos, por ejemplo acá llamo al binario ejec con varios argumentos.
 
-* Para comenzar a debuggear debemos configurar algún breakpoint (si no se ejecutará el programa sin para) y luego comenzar a correrlo. 
+* Por defecto GDB usa sintaxis de `att` al imprimir lineas desensambladas.
+  Como usamos gdb-dashboard, que imprime el assembly de la línea actual arriba de todo, nos gustaría que ese assembly use sintaxis de intel. 
+  Para configurar esto podemos usar el comando `set disassembly-flavor intel` al comienzo de nuestra sesión.
+* Para comenzar a debuggear debemos configurar algún breakpoint (si no se ejecutará el programa sin parar) y luego comenzar a correrlo. 
 
 ## Configurando breakpoints
 * Podemos crear breakpoints en cualquier momento (más detalle en la sección [Manejo de breakpoints](#manejo-de-breakpoints)). Algunas formas de hacerlo son:
@@ -38,7 +42,7 @@ Supongamos que tengo los archivos asm.asm, c.c y el programa compilado (binario)
     * `$b c.c:30`          // Agrega breakpoint en linea 30 de c.c
     * `b holaMundo.debug`  // Agrega breakpoint donde está .debug (el que me funciona mejor para asm)
 
-## Debuggeando nuestro código
+## Iniciando la ejecución del código
 1) `run` o `r` iniciará la ejecución del programa (o la reiniciará desde el principio, si ya se está ejecutando) y...
 2) Nos llevará al primer breakpoint, donde podemos hacer
     * `info registers`     // O cualquiera de sus variantes (reg, r,... ver help info)
@@ -102,6 +106,76 @@ Proveemos varios comandos extra para imprimir el estado del programa en GDB dura
     * `info page table [idx]` -- Muestra las entradas presentes en la page table dada
     * `info page [addr]` -- Muestra información de paginación para la dirección virtual dada
 
+## Casteos y prints con formato
+Cuando tenemos una dirección de memoria (puntero) y conocemos su tipo, podemos castearlo a su tipo al hacer print para mejorar legibilidad.
+Cuando trabajamos en C las variables ya están tipadas, por lo que si me paro al final de este código:
+```c
+lista_t* mi_lista = nueva_lista();
+head_lista->arreglo = array;
+head_lista->longitud = 12;
+head_lista->next = NULL;
+mi_lista->head = head_lista;
+...
+```
+puedo hacer lo siguiente en gdb:
+```python
+>>> p *mi_lista
+$1 = {
+  head = 0x4066b0
+}
+>>> p *(mi_lista->head)
+$2 = {
+  next = 0x0,
+  longitud = 12,
+  arreglo = 0x4068c0
+}
+```
+Ahora, supongamos que hice lo mismo en assemblery tengo guardado en RAX el puntero a mi lista.
+Si no especificamos el tipo del puntero, vemos que asume algún tipo para el puntero (parece ser `uint64_t*`)
+```python
+>>> p/x $rax
+$3 = 0x406830
+>>> p/x *$rax
+$4 = 0x4066b0
+```
+Si queremos lograr la misma salida de antes, debemos especificar el tipo:
+```python 
+>>> p/x *(lista_t*)$rax
+$5 = {
+  head = 0x4066b0
+}
+>>> p/x *((lista_t*)$rax)->head
+$6 = {
+  next = 0x0,
+  longitud = 0xc,
+  arreglo = 0x4068c0
+}
+```
+Si quisieramos imprimir el arreglo guardado en la lista, que se declara de tipo uint32_t*, es interesante notar que ni siquiera en C se imprimirá todo el arreglo, ya que gdb no sabe en principio qué largo tiene (a diferencia de los strings (char*), los arreglos no tienen carácter de límite al final)
+```python
+>>> p *(mi_lista->head->arreglo)
+$7 = 0
+```
+Pero gdb nos permite, a partir de un puntero tipado, especificar cuantos elementos consecutivos queremos imprimir usando la notación @NUM:
+```python
+>>> p *(uint32_t*) mi_lista->head->arreglo@10
+$6 = {[0] = 0, [1] = 1, [2] = 2, [3] = 3, [4] = 4, [5] = 5, [6] = 6, [7] = 7, [8] = 8, [9] = 9}
+```
+Esto es muy útil para, por ejemplo, debuggear la pila, que es un array de uint64_t (o de uint32_t en arquitectura de 32 bits).
+Supongamos el siguiente código y nos paramos al final:
+```c
+int main (void){
+  char* saludo = "Hola";
+  return 0;
+}
+```
+Con gdb podemos verlas últimas N posiciones apiladas del stack, por ejemplo si quisieramos ver las últimas 3 posiciones:
+```python
+>>> p *((char**) $rsp)@3
+$8 = {[0] = 0x1000 <error: Cannot access memory at address 0x1000>, [1] = 0x555555556008 "Hola", [2] = 0x1 <error: Cannot access memory at address 0x1>}
+```
+Como lo que se encuentra en el tope de la pila y en la tercer posición no son char* no funcionara desreferenciarlos, pero podemos ver su valor en hexadecimal de todos modos.
+En el caso de la segunda posición en pila, donde quedo guardada la variable local con la string "Hola", si se imprimirá su valor.
 
 ### Terminando o reiniciando la ejecución
 * En cualquier momento podemos salir con quit, o reiniciar la ejecución del código volviendo a correr `r` (run). También se puede hacer `make` desde dentro de gdb y volver a correr el ejecutable con `r`, y se cargará el binario nuevo. Útil para mantener los breakpoints preestablecidos luego de una corrección chica. 
