@@ -8,7 +8,7 @@
       - [Ejemplo de salida de `print $xmm`](#ejemplo-de-salida-de-print-xmm)
     - [Revisando el estado del programa](#revisando-el-estado-del-programa)
   - [Casteos y prints con formato](#casteos-y-prints-con-formato)
-    - [Terminando o reiniciando la ejecución](#terminando-o-reiniciando-la-ejecución)
+  - [Terminando o reiniciando la ejecución](#terminando-o-reiniciando-la-ejecución)
   - [Manejo de breakpoints](#manejo-de-breakpoints)
 
 ## Antes de llamar a GDB
@@ -177,7 +177,7 @@ $8 = {[0] = 0x1000 <error: Cannot access memory at address 0x1000>, [1] = 0x5555
 Como lo que se encuentra en el tope de la pila y en la tercer posición no son char* no funcionara desreferenciarlos, pero podemos ver su valor en hexadecimal de todos modos.
 En el caso de la segunda posición en pila, donde quedo guardada la variable local con la string "Hola", si se imprimirá su valor.
 
-### Terminando o reiniciando la ejecución
+## Terminando o reiniciando la ejecución
 * En cualquier momento podemos salir con quit, o reiniciar la ejecución del código volviendo a correr `r` (run). También se puede hacer `make` desde dentro de gdb y volver a correr el ejecutable con `r`, y se cargará el binario nuevo. Útil para mantener los breakpoints preestablecidos luego de una corrección chica. 
 
 ## Manejo de breakpoints
